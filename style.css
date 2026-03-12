@@ -1,0 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+
+body {
+    font-family: 'Cairo', sans-serif;
+    background-color: #fdf6e3;
+    color: #4a3b32;
+    text-align: center;
+    margin: 0;
+    padding: 20px;
+}
+.container {
+    max-width: 400px;
+    margin: 50px auto;
+    background: white;
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+}
+h1 { color: #d35400; }
+h2 { color: #27ae60; }
+input {
+    width: 85%;
+    padding: 12px;
+    margin: 10px 0;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 16px;
+    font-family: 'Cairo', sans-serif;
+}
+button {
+    width: 90%;
+    padding: 12px;
+    margin: 10px 0;
+    border: none;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.3s;
+    font-family: 'Cairo', sans-serif;
+}
+.btn-create { background-color: #d35400; color: white; }
+.btn-create:hover { background-color: #e67e22; }
+.btn-join { background-color: #27ae60; color: white; }
+.btn-join:hover { background-color: #2ecc71; }
+hr { margin: 20px 0; border: 0; border-top: 1px solid #eee; }
+ul { list-style: none; padding: 0; }
+li { background: #fceea7; margin: 8px 0; padding: 10px; border-radius: 8px; font-weight: bold; color: #d35400;}
