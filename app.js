@@ -142,13 +142,51 @@ function startGame() {
     }
 }
 
+const questions = [
+    { id: 1, text: "لو معك رحلة مجانية لشخصين، مين بتأخذ معك من الموجودين وليه؟", category: "خفيف" },
+    { id: 2, text: "شو أكثر طبخة بتذكرك بلمة العيلة؟", category: "عائلة" },
+    { id: 3, text: "لو صرت رئيس وزراء ليوم واحد، شو أول قرار بتأخذه؟", category: "ضحك" },
+    { id: 4, text: "مين أكثر واحد في القعدة 'راعي مشاكل' وهو صغير؟ 😂", category: "عائلة" },
+    { id: 5, text: "لو تقدر ترجع بالزمن، لأي سنة بترجع؟", category: "عميق" },
+    { id: 6, text: "شو أغرب موقف صار معك في عرس أو مناسبة عائلية؟", category: "ضحك" },
+    { id: 7, text: "لو انقطع النت عن العالم كله، شو أول إشي بتعمله؟", category: "خفيف" }
+];
+
 // --- دوال صفحة اللعبة ---
 if (window.location.pathname.includes("game.html")) {
     const code = localStorage.getItem("roomCode");
-    if (!code) {
-        window.location.href = "index.html";
-    } else {
-        console.log("الآن أنت في اللعبة! 🌶️");
-        // هنا تبرمج منطق الأسئلة لاحقاً
-    }
+    const myName = localStorage.getItem("playerName");
+
+    const roomRef = database.ref('rooms/' + code);
+
+    // 1. مراقبة السؤال الحالي في Firebase
+    roomRef.child('currentQuestionId').on('value', (snapshot) => {
+        const qId = snapshot.val();
+        if (qId) {
+            const question = questionBank.find(q => q.id === qId);
+            document.getElementById("question-text").innerText = question.text;
+        }
+    });
+
+    // 2. إظهار زر "سؤال جديد" فقط للأدمن
+    roomRef.child('admin').once('value', (snapshot) => {
+        if (snapshot.val() === myName) {
+            // بنضيف زر للأدمن ديناميكياً أو بنظهره إذا كان موجود
+            const nextBtn = document.createElement('button');
+            nextBtn.innerText = "السؤال التالي ➡️";
+            nextBtn.className = "btn-create"; 
+            nextBtn.onclick = () => pickRandomQuestion(code);
+            document.getElementById("game-area").appendChild(nextBtn);
+        }
+    });
+}
+
+// دالة اختيار سؤال عشوائي (للأدمن فقط)
+function pickRandomQuestion(code) {
+    const randomIndex = Math.floor(Math.random() * questionBank.length);
+    const selectedQuestion = questionBank[randomIndex];
+    
+    database.ref('rooms/' + code).update({
+        currentQuestionId: selectedQuestion.id
+    });
 }
