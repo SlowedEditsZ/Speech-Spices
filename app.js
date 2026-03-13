@@ -16,7 +16,7 @@ if (!firebase.apps.length) {
 }
 const database = firebase.database();
 
-// 2. بنك الأسئلة (يجب أن يكون متاحاً لكل الدوال)
+// 2. بنك الأسئلة
 const questions = [
     { id: 1, text: "لو معك رحلة مجانية لشخصين، مين بتأخذ معك من الموجودين وليه؟", category: "خفيف" },
     { id: 2, text: "شو أكثر طبخة بتذكرك بلمة العيلة؟", category: "عائلة" },
@@ -27,14 +27,14 @@ const questions = [
     { id: 7, text: "لو انقطع النت عن العالم كله، شو أول إشي بتعمله؟", category: "خفيف" }
 ];
 
-// توليد ID فريد للمتصفح
+// توليد ID فريد للمتصفح (للتأكد من هوية اللاعب)
 let myPlayerId = localStorage.getItem("playerId");
 if (!myPlayerId) {
     myPlayerId = "player_" + Math.random().toString(36).substr(2, 9);
     localStorage.setItem("playerId", myPlayerId);
 }
 
-// --- دوال صفحة البداية ---
+// --- دوال صفحة البداية (index.html) ---
 function createRoom() {
     const myName = document.getElementById('playerName').value.trim();
     if (!myName) return alert("اكتب اسمك أولاً! 😉");
@@ -49,7 +49,10 @@ function createRoom() {
         status: "waiting",
         players: {} 
     }).then(() => {
-        window.location.href = "lobby.html";
+        // إظهار اللوبي وإخفاء شاشة الدخول (بناءً على ملف index.html اللي بعته)
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('waiting-screen').style.display = 'block';
+        initLobby(myRoomCode);
     });
 }
 
@@ -59,140 +62,112 @@ function joinRoom() {
 
     if (!myName || !myRoomCode) return alert("تأكد من كتابة اسمك وكود الغرفة! 🧐");
 
-    const roomRef = database.ref('rooms/' + myRoomCode);
-
-    roomRef.once('value', (snapshot) => {
+    database.ref('rooms/' + myRoomCode).once('value', (snapshot) => {
         if (snapshot.exists()) {
-            const roomData = snapshot.val();
-            const players = roomData.players || {};
-
-            let nameExists = Object.values(players).some(p => p.name === myName);
-            if (nameExists) {
-                alert("هالاسم موجود بالغرفة! اختار اسم ثاني 😉");
-            } else {
-                localStorage.setItem("playerName", myName);
-                localStorage.setItem("roomCode", myRoomCode);
-                window.location.href = "lobby.html";
-            }
+            localStorage.setItem("playerName", myName);
+            localStorage.setItem("roomCode", myRoomCode);
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('waiting-screen').style.display = 'block';
+            initLobby(myRoomCode);
         } else {
             alert("كود الغرفة غير صحيح! ❌");
         }
     });
 }
 
-// --- دوال صفحة اللوبي ---
-if (window.location.pathname.includes("lobby.html")) {
-    const code = localStorage.getItem("roomCode");
+// --- منطق اللوبي (Lobby Logic) ---
+function initLobby(code) {
     const myName = localStorage.getItem("playerName");
+    document.getElementById('displayRoomCode').innerText = code;
 
-    if (!code || !myName) {
-        window.location.href = "index.html";
-    } else {
-        document.getElementById('displayRoomCode').innerText = code;
+    const playerRef = database.ref('rooms/' + code + '/players/' + myPlayerId);
+    const roomRef = database.ref('rooms/' + code);
 
-        const playerRef = database.ref('rooms/' + code + '/players/' + myPlayerId);
-        const roomRef = database.ref('rooms/' + code);
+    // إضافة اللاعب وحذفه تلقائياً عند إغلاق المتصفح
+    playerRef.set({ name: myName });
+    playerRef.onDisconnect().remove();
 
-        // إضافة اللاعب للسيرفر وحذفه تلقائياً عند المغادرة
-        playerRef.set({ name: myName });
-        playerRef.onDisconnect().remove();
+    // 🌟 مراقبة اللاعبين والحذف الشامل للغرفة (الحل لطلبك)
+    roomRef.child('players').on('value', (snapshot) => {
+        const playersList = document.getElementById('playersList');
+        if (playersList) playersList.innerHTML = "";
 
-        // مراقبة قائمة اللاعبين وحذف الغرفة نهائياً إذا أصبحت فارغة
-        const playersRef = database.ref('rooms/' + code + '/players');
-        playersRef.on('value', (snapshot) => {
-            const playersList = document.getElementById('playersList');
-            if (playersList) playersList.innerHTML = "";
+        // إذا لم يعد هناك لاعبين (Snapshot غير موجود أو عدد الأبناء 0)
+        if (!snapshot.exists() || snapshot.numChildren() === 0) {
+            // مسح المسار بالكامل لضمان عدم بقاء رقم الغرفة مع null
+            roomRef.set(null).then(() => {
+                console.log("تم تنظيف قاعدة البيانات تماماً 🧹");
+                // إذا كان المستخدم لا يزال في الصفحة، نعيده للبداية
+                if(document.getElementById('waiting-screen').style.display === 'block') {
+                    location.reload(); 
+                }
+            });
+        } else {
+            snapshot.forEach((child) => {
+                const li = document.createElement('li');
+                li.innerText = child.val().name;
+                playersList.appendChild(li);
+            });
+        }
+    });
 
-            if (!snapshot.exists() || snapshot.numChildren() === 0) {
-                // 🌟 هون السر: بنحذف مسار الغرفة كامل (الرقم وكل اللي تحته)
-                database.ref('rooms/' + code).remove().then(() => {
-                    console.log("تم تنظيف الغرفة بالكامل من السيرفر 🗑️");
-                });
-            } else {
-                snapshot.forEach((childSnapshot) => {
-                    const player = childSnapshot.val();
-                    const li = document.createElement('li');
-                    li.innerText = player.name;
-                    if (playersList) playersList.appendChild(li);
-                });
-            }
-        });
+    // إظهار زر البدء للأدمن
+    roomRef.child('admin').once('value', (snap) => {
+        if (snap.val() === myName) {
+            document.getElementById('startGameBtn').style.display = 'inline-block';
+        }
+    });
 
-        // إظهار زر البدء للأدمن فقط
-        roomRef.child('admin').once('value', (snapshot) => {
-            if (snapshot.val() === myName) {
-                const startBtn = document.getElementById('startGameBtn');
-                if (startBtn) startBtn.style.display = 'inline-block';
-            }
-        });
-
-        // الانتقال للعبة عند تغيير الحالة
-        roomRef.child('status').on('value', (snapshot) => {
-            if (snapshot.val() === "playing") {
-                window.location.href = "game.html";
-            }
-        });
-    }
+    // مراقبة حالة اللعبة للانتقال لشاشة اللعب
+    roomRef.child('status').on('value', (snap) => {
+        if (snap.val() === "playing") {
+            document.getElementById('waiting-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'block';
+            initGame(code);
+        }
+    });
 }
 
-// دالة بدء اللعبة (للأدمن)
+// --- منطق بدء اللعبة (للأدمن) ---
 function startGame() {
     const code = localStorage.getItem("roomCode");
-    if (code) {
-        // اختيار أول سؤال عشوائياً قبل الانتقال
-        const randomIndex = Math.floor(Math.random() * questions.length);
-        const firstQuestionId = questions[randomIndex].id;
-
-        database.ref('rooms/' + code).update({
-            status: "playing",
-            currentQuestionId: firstQuestionId
-        });
-    }
-}
-
-// --- دوال صفحة اللعبة ---
-if (window.location.pathname.includes("game.html")) {
-    const code = localStorage.getItem("roomCode");
-    const myName = localStorage.getItem("playerName");
-
-    if (!code) {
-        window.location.href = "index.html";
-    } else {
-        const roomRef = database.ref('rooms/' + code);
-
-        // مراقبة السؤال الحالي في Firebase وعرضه
-        roomRef.child('currentQuestionId').on('value', (snapshot) => {
-            const qId = snapshot.val();
-            if (qId) {
-                const question = questions.find(q => q.id === qId);
-                if (question) {
-                    document.getElementById("question-text").innerText = question.text;
-                }
-            }
-        });
-
-        // إظهار زر "سؤال جديد" للأدمن فقط
-        roomRef.child('admin').once('value', (snapshot) => {
-            if (snapshot.val() === myName) {
-                const gameArea = document.getElementById("game-area");
-                if (gameArea) {
-                    const nextBtn = document.createElement('button');
-                    nextBtn.innerText = "السؤال التالي ➡️";
-                    nextBtn.className = "btn-create"; 
-                    nextBtn.onclick = () => pickRandomQuestion(code);
-                    gameArea.appendChild(nextBtn);
-                }
-            }
-        });
-    }
-}
-
-// دالة اختيار سؤال جديد عشوائياً
-function pickRandomQuestion(code) {
     const randomIndex = Math.floor(Math.random() * questions.length);
-    const selectedQuestion = questions[randomIndex];
     
     database.ref('rooms/' + code).update({
-        currentQuestionId: selectedQuestion.id
+        status: "playing",
+        currentQuestionId: questions[randomIndex].id
+    });
+}
+
+// --- منطق شاشة اللعبة (Game Screen) ---
+function initGame(code) {
+    const myName = localStorage.getItem("playerName");
+    const roomRef = database.ref('rooms/' + code);
+
+    // عرض السؤال الحالي
+    roomRef.child('currentQuestionId').on('value', (snapshot) => {
+        const qId = snapshot.val();
+        if (qId) {
+            const question = questions.find(q => q.id === qId);
+            if (question) {
+                document.getElementById("question-text").innerText = question.text;
+            }
+        }
+    });
+
+    // إظهار زر "التالي" للأدمن فقط داخل game-area
+    roomRef.child('admin').once('value', (snap) => {
+        if (snap.val() === myName) {
+            const area = document.getElementById("game-area");
+            area.innerHTML = ""; // تنظيف المنطقة
+            const btn = document.createElement('button');
+            btn.innerText = "سؤال جديد 🌶️";
+            btn.className = "btn-create";
+            btn.onclick = () => {
+                const nextQ = questions[Math.floor(Math.random() * questions.length)];
+                roomRef.update({ currentQuestionId: nextQ.id });
+            };
+            area.appendChild(btn);
+        }
     });
 }
