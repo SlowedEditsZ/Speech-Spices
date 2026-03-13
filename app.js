@@ -1,4 +1,4 @@
-// 1. إعدادات Firebase
+// إعدادات Firebase
 const firebaseConfig = {
     apiKey: "AIzaSyCp_WRFkY9CRWjiX8Wjl5c6hBZa3GkCQUk",
     authDomain: "speech-spices.firebaseapp.com",
@@ -16,27 +16,27 @@ if (!firebase.apps.length) {
 }
 const database = firebase.database();
 
-// توليد ID فريد للمتصفح عشان ما يتكرر اللاعب لو عمل Refresh
+// توليد ID فريد للمتصفح
 let myPlayerId = localStorage.getItem("playerId");
 if (!myPlayerId) {
     myPlayerId = "player_" + Math.random().toString(36).substr(2, 9);
     localStorage.setItem("playerId", myPlayerId);
 }
 
-// --- دوال صفحة البداية (index.html) ---
+// --- دوال صفحة البداية ---
 function createRoom() {
     const myName = document.getElementById('playerName').value.trim();
     if (!myName) return alert("اكتب اسمك أولاً! 😉");
 
     const myRoomCode = Math.floor(1000 + Math.random() * 9000).toString();
-    
+
     localStorage.setItem("playerName", myName);
     localStorage.setItem("roomCode", myRoomCode);
 
     database.ref('rooms/' + myRoomCode).set({
         admin: myName,
-        status: "waiting"
-        // الملاحظة: اللاعب بنضاف فعلياً أول ما يفتح صفحة اللوبي
+        status: "waiting",
+        players: {} // لضمان وجود قسم اللاعبين
     }).then(() => {
         window.location.href = "lobby.html";
     });
@@ -45,19 +45,18 @@ function createRoom() {
 function joinRoom() {
     const myName = document.getElementById('playerName').value.trim();
     const myRoomCode = document.getElementById('roomCodeInput').value.trim();
-    
+
     if (!myName || !myRoomCode) return alert("تأكد من كتابة اسمك وكود الغرفة! 🧐");
 
     const roomRef = database.ref('rooms/' + myRoomCode);
-    
+
     roomRef.once('value', (snapshot) => {
         if (snapshot.exists()) {
             const roomData = snapshot.val();
             const players = roomData.players || {};
 
-            // فحص إذا الاسم موجود أصلاً في الغرفة
+            // التحقق من تكرار الاسم
             let nameExists = Object.values(players).some(p => p.name === myName);
-
             if (nameExists) {
                 alert("هالاسم موجود بالغرفة! اختار اسم ثاني 😉");
             } else {
@@ -71,7 +70,7 @@ function joinRoom() {
     });
 }
 
-// --- دوال صفحة اللوبي (lobby.html) ---
+// --- دوال صفحة اللوبي ---
 if (window.location.pathname.includes("lobby.html")) {
     const code = localStorage.getItem("roomCode");
     const myName = localStorage.getItem("playerName");
@@ -84,20 +83,25 @@ if (window.location.pathname.includes("lobby.html")) {
         const playerRef = database.ref('rooms/' + code + '/players/' + myPlayerId);
         const roomRef = database.ref('rooms/' + code);
 
-        // إضافة اللاعب للسيرفر
+        // إضافة اللاعب
         playerRef.set({ name: myName });
 
-        // السطر السحري: حذف اللاعب تلقائياً عند إغلاق المتصفح أو Refresh
+        // حذف اللاعب عند إغلاق المتصفح
         playerRef.onDisconnect().remove();
 
-        // مراقبة قائمة اللاعبين
-        roomRef.child('players').on('value', (snapshot) => {
+        // مراقبة اللاعبين
+        const playersRef = database.ref('rooms/' + code + '/players');
+        playersRef.on('value', (snapshot) => {
             const playersList = document.getElementById('playersList');
-            if (playersList) playersList.innerHTML = ""; 
-            
-            if (!snapshot.exists()) {
-                // إذا فضيت الغرفة تماماً، احذفها من السيرفر
-                roomRef.remove();
+            if (playersList) playersList.innerHTML = "";
+
+            if (!snapshot.exists() || snapshot.numChildren() === 0) {
+                // إذا الغرفة فاضية، احذفها
+                database.ref('rooms/' + code).remove();
+                // إيقاف الاستماع
+                playersRef.off();
+                // إعادة التوجيه أو أي إجراء آخر
+                window.location.href = "index.html";
             } else {
                 snapshot.forEach((childSnapshot) => {
                     const player = childSnapshot.val();
@@ -116,7 +120,7 @@ if (window.location.pathname.includes("lobby.html")) {
             }
         });
 
-        // الانتقال لصفحة اللعبة عند تغيير الحالة
+        // الانتقال للعبة عند تغيير الحالة
         roomRef.child('status').on('value', (snapshot) => {
             if (snapshot.val() === "playing") {
                 window.location.href = "game.html";
@@ -127,18 +131,20 @@ if (window.location.pathname.includes("lobby.html")) {
 
 function startGame() {
     const code = localStorage.getItem("roomCode");
-    database.ref('rooms/' + code).update({
-        status: "playing" 
-    });
+    if (code) {
+        database.ref('rooms/' + code).update({
+            status: "playing"
+        });
+    }
 }
 
-// --- دوال صفحة اللعبة (game.html) ---
+// --- دوال صفحة اللعبة ---
 if (window.location.pathname.includes("game.html")) {
     const code = localStorage.getItem("roomCode");
     if (!code) {
         window.location.href = "index.html";
     } else {
         console.log("الآن أنت في اللعبة! 🌶️");
-        // هون بنقدر نبرمج منطق الأسئلة لاحقاً
+        // هنا تبرمج منطق الأسئلة لاحقاً
     }
 }
