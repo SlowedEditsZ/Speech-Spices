@@ -82,12 +82,16 @@ if (window.location.pathname.includes("lobby.html")) {
 
         const playerRef = database.ref('rooms/' + code + '/players/' + myPlayerId);
         const roomRef = database.ref('rooms/' + code);
+        const adminRef = database.ref('rooms/' + code + '/admin');
+        const statusRef = database.ref('rooms/' + code + '/status');
 
         // إضافة اللاعب
         playerRef.set({ name: myName });
 
         // حذف اللاعب عند إغلاق المتصفح
         playerRef.onDisconnect().remove();
+        adminRef.onDisconnect().remove();
+        statusRef.onDisconnect().remove();
 
         // مراقبة اللاعبين
         const playersRef = database.ref('rooms/' + code + '/players');
