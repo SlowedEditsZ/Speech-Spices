@@ -1,4 +1,4 @@
-// 1. إعدادات Firebase تبعتك (انسخها من الموقع وحطها هون)
+// 1. إعدادات Firebase
 const firebaseConfig = {
     apiKey: "AIzaSyCp_WRFkY9CRWjiX8Wjl5c6hBZa3GkCQUk",
     authDomain: "speech-spices.firebaseapp.com",
@@ -11,80 +11,115 @@ const firebaseConfig = {
 };
 
 // 2. تشغيل Firebase
-firebase.initializeApp(firebaseConfig);
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
 const database = firebase.database();
 
-let myName = "";
-let myRoomCode = "";
+// توليد ID فريد لكل لاعب عشان ما يتكرر لما يعمل Refresh
+let myPlayerId = localStorage.getItem("playerId");
+if (!myPlayerId) {
+    myPlayerId = "player_" + Math.random().toString(36).substr(2, 9);
+    localStorage.setItem("playerId", myPlayerId);
+}
 
-// --- دالة إنشاء غرفة جديدة ---
+// --- دوال صفحة البداية (index.html) ---
 function createRoom() {
-    myName = document.getElementById('playerName').value;
+    const myName = document.getElementById('playerName').value;
     if (!myName) return alert("اكتب اسمك أولاً! 😉");
 
-    // توليد كود غرفة عشوائي من 4 أرقام
-    myRoomCode = Math.floor(1000 + Math.random() * 9000).toString();
+    const myRoomCode = Math.floor(1000 + Math.random() * 9000).toString();
     
-    // إنشاء الغرفة في Firebase
+    // حفظ البيانات في المتصفح
+    localStorage.setItem("playerName", myName);
+    localStorage.setItem("roomCode", myRoomCode);
+
     const roomRef = database.ref('rooms/' + myRoomCode);
-    
     roomRef.set({
         admin: myName,
-        gameStarted: false,
+        status: "waiting",
         players: {}
     }).then(() => {
-        joinRoomLogic(myRoomCode); // انضمام تلقائي بعد الإنشاء
+        window.location.href = "lobby.html"; // الانتقال لصفحة اللوبي
     });
 }
 
-// --- دالة الانضمام لغرفة موجودة ---
 function joinRoom() {
-    myName = document.getElementById('playerName').value;
-    myRoomCode = document.getElementById('roomCodeInput').value;
+    const myName = document.getElementById('playerName').value;
+    const myRoomCode = document.getElementById('roomCodeInput').value;
     
     if (!myName || !myRoomCode) return alert("تأكد من كتابة اسمك وكود الغرفة! 🧐");
 
-    // التأكد إذا الغرفة موجودة أصلاً
     database.ref('rooms/' + myRoomCode).once('value', (snapshot) => {
         if (snapshot.exists()) {
-            joinRoomLogic(myRoomCode);
+            localStorage.setItem("playerName", myName);
+            localStorage.setItem("roomCode", myRoomCode);
+            window.location.href = "lobby.html"; // الانتقال لصفحة اللوبي
         } else {
             alert("هاد الكود غلط أو الغرفة مش موجودة! ❌");
         }
     });
 }
 
-// --- المنطق المشترك للانضمام والانتظار ---
-function joinRoomLogic(code) {
-    const playerRef = database.ref('rooms/' + code + '/players').push();
-    
-    // تخزين اسم اللاعب في الغرفة
-    playerRef.set({
-        name: myName
-    });
+// --- دوال صفحة اللوبي (lobby.html) ---
+if (window.location.pathname.includes("lobby.html")) {
+    const code = localStorage.getItem("roomCode");
+    const myName = localStorage.getItem("playerName");
 
-    // تحويل الشاشة لغرفة الانتظار
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('waiting-screen').style.display = 'block';
-    document.getElementById('displayRoomCode').innerText = code;
+    if (!code || !myName) {
+        window.location.href = "index.html"; // إذا مافي بيانات، ارجع للبداية
+    } else {
+        document.getElementById('displayRoomCode').innerText = code;
 
-    // مراقبة اللاعبين (Real-time)
-    database.ref('rooms/' + code + '/players').on('value', (snapshot) => {
-        const playersList = document.getElementById('playersList');
-        playersList.innerHTML = ""; // تنظيف القائمة
-        
-        snapshot.forEach((childSnapshot) => {
-            const player = childSnapshot.val();
-            const li = document.createElement('li');
-            li.innerText = player.name;
-            playersList.appendChild(li);
+        // إضافة اللاعب باستخدام الـ ID الخاص فيه (يمنع التكرار)
+        database.ref('rooms/' + code + '/players/' + myPlayerId).set({
+            name: myName
         });
-    });
 
-    // إذا كنت أنت الأدمن، أظهر زر "ابدأ اللعبة"
-    database.ref('rooms/' + code + '/admin').once('value', (snapshot) => {
-        if (snapshot.val() === myName) {
-            document.getElementById('startGameBtn').style.display = 'inline-block';
-        }
+        // مراقبة اللاعبين
+        database.ref('rooms/' + code + '/players').on('value', (snapshot) => {
+            const playersList = document.getElementById('playersList');
+            playersList.innerHTML = ""; 
+            
+            snapshot.forEach((childSnapshot) => {
+                const player = childSnapshot.val();
+                const li = document.createElement('li');
+                li.innerText = player.name;
+                playersList.appendChild(li);
+            });
+        });
+
+        // إظهار زر البدء للأدمن فقط
+        database.ref('rooms/' + code + '/admin').once('value', (snapshot) => {
+            if (snapshot.val() === myName) {
+                document.getElementById('startGameBtn').style.display = 'inline-block';
+            }
+        });
+
+        // مراقبة حالة اللعبة للانتقال لشاشة اللعب
+        database.ref('rooms/' + code + '/status').on('value', (snapshot) => {
+            if (snapshot.val() === "playing") {
+                window.location.href = "game.html"; // الانتقال لصفحة اللعبة
+            }
+        });
+    }
+}
+
+function startGame() {
+    const code = localStorage.getItem("roomCode");
+    database.ref('rooms/' + code).update({
+        status: "playing" 
     });
+}
+
+// --- دوال صفحة اللعبة (game.html) ---
+if (window.location.pathname.includes("game.html")) {
+    const code = localStorage.getItem("roomCode");
+    if (!code) {
+        window.location.href = "index.html";
+    } else {
+        // هون بنقدر نبلش نعرض الأسئلة واللعبة
+        console.log("Welcome to the game!");
+        document.getElementById("question-text").innerText = "لو كنت بهار، أي نوع رح تكون وليه؟";
+    }
 }
