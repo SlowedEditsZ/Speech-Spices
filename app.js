@@ -97,14 +97,17 @@ if (window.location.pathname.includes("lobby.html")) {
         playerRef.set({ name: myName });
         playerRef.onDisconnect().remove();
 
-        // مراقبة قائمة اللاعبين وحذف الغرفة إذا أصبحت فارغة
+        // مراقبة قائمة اللاعبين وحذف الغرفة نهائياً إذا أصبحت فارغة
         const playersRef = database.ref('rooms/' + code + '/players');
         playersRef.on('value', (snapshot) => {
             const playersList = document.getElementById('playersList');
             if (playersList) playersList.innerHTML = "";
 
-            if (!snapshot.exists()) {
-                database.ref('rooms/' + code).remove();
+            if (!snapshot.exists() || snapshot.numChildren() === 0) {
+                // 🌟 هون السر: بنحذف مسار الغرفة كامل (الرقم وكل اللي تحته)
+                database.ref('rooms/' + code).remove().then(() => {
+                    console.log("تم تنظيف الغرفة بالكامل من السيرفر 🗑️");
+                });
             } else {
                 snapshot.forEach((childSnapshot) => {
                     const player = childSnapshot.val();
