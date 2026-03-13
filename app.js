@@ -10,13 +10,13 @@ const firebaseConfig = {
     databaseURL: "https://speech-spices-default-rtdb.firebaseio.com/"
 };
 
-// 2. تشغيل Firebase
+// تشغيل Firebase
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
 const database = firebase.database();
 
-// توليد ID فريد لكل لاعب عشان ما يتكرر لما يعمل Refresh
+// توليد ID فريد للمتصفح عشان ما يتكرر اللاعب لو عمل Refresh
 let myPlayerId = localStorage.getItem("playerId");
 if (!myPlayerId) {
     myPlayerId = "player_" + Math.random().toString(36).substr(2, 9);
@@ -25,38 +25,48 @@ if (!myPlayerId) {
 
 // --- دوال صفحة البداية (index.html) ---
 function createRoom() {
-    const myName = document.getElementById('playerName').value;
+    const myName = document.getElementById('playerName').value.trim();
     if (!myName) return alert("اكتب اسمك أولاً! 😉");
 
     const myRoomCode = Math.floor(1000 + Math.random() * 9000).toString();
     
-    // حفظ البيانات في المتصفح
     localStorage.setItem("playerName", myName);
     localStorage.setItem("roomCode", myRoomCode);
 
-    const roomRef = database.ref('rooms/' + myRoomCode);
-    roomRef.set({
+    database.ref('rooms/' + myRoomCode).set({
         admin: myName,
-        status: "waiting",
-        players: {}
+        status: "waiting"
+        // الملاحظة: اللاعب بنضاف فعلياً أول ما يفتح صفحة اللوبي
     }).then(() => {
-        window.location.href = "lobby.html"; // الانتقال لصفحة اللوبي
+        window.location.href = "lobby.html";
     });
 }
 
 function joinRoom() {
-    const myName = document.getElementById('playerName').value;
-    const myRoomCode = document.getElementById('roomCodeInput').value;
+    const myName = document.getElementById('playerName').value.trim();
+    const myRoomCode = document.getElementById('roomCodeInput').value.trim();
     
     if (!myName || !myRoomCode) return alert("تأكد من كتابة اسمك وكود الغرفة! 🧐");
 
-    database.ref('rooms/' + myRoomCode).once('value', (snapshot) => {
+    const roomRef = database.ref('rooms/' + myRoomCode);
+    
+    roomRef.once('value', (snapshot) => {
         if (snapshot.exists()) {
-            localStorage.setItem("playerName", myName);
-            localStorage.setItem("roomCode", myRoomCode);
-            window.location.href = "lobby.html"; // الانتقال لصفحة اللوبي
+            const roomData = snapshot.val();
+            const players = roomData.players || {};
+
+            // فحص إذا الاسم موجود أصلاً في الغرفة
+            let nameExists = Object.values(players).some(p => p.name === myName);
+
+            if (nameExists) {
+                alert("هالاسم موجود بالغرفة! اختار اسم ثاني 😉");
+            } else {
+                localStorage.setItem("playerName", myName);
+                localStorage.setItem("roomCode", myRoomCode);
+                window.location.href = "lobby.html";
+            }
         } else {
-            alert("هاد الكود غلط أو الغرفة مش موجودة! ❌");
+            alert("كود الغرفة غير صحيح! ❌");
         }
     });
 }
@@ -67,39 +77,49 @@ if (window.location.pathname.includes("lobby.html")) {
     const myName = localStorage.getItem("playerName");
 
     if (!code || !myName) {
-        window.location.href = "index.html"; // إذا مافي بيانات، ارجع للبداية
+        window.location.href = "index.html";
     } else {
         document.getElementById('displayRoomCode').innerText = code;
 
-        // إضافة اللاعب باستخدام الـ ID الخاص فيه (يمنع التكرار)
-        database.ref('rooms/' + code + '/players/' + myPlayerId).set({
-            name: myName
-        });
+        const playerRef = database.ref('rooms/' + code + '/players/' + myPlayerId);
+        const roomRef = database.ref('rooms/' + code);
 
-        // مراقبة اللاعبين
-        database.ref('rooms/' + code + '/players').on('value', (snapshot) => {
+        // إضافة اللاعب للسيرفر
+        playerRef.set({ name: myName });
+
+        // السطر السحري: حذف اللاعب تلقائياً عند إغلاق المتصفح أو Refresh
+        playerRef.onDisconnect().remove();
+
+        // مراقبة قائمة اللاعبين
+        roomRef.child('players').on('value', (snapshot) => {
             const playersList = document.getElementById('playersList');
-            playersList.innerHTML = ""; 
+            if (playersList) playersList.innerHTML = ""; 
             
-            snapshot.forEach((childSnapshot) => {
-                const player = childSnapshot.val();
-                const li = document.createElement('li');
-                li.innerText = player.name;
-                playersList.appendChild(li);
-            });
-        });
-
-        // إظهار زر البدء للأدمن فقط
-        database.ref('rooms/' + code + '/admin').once('value', (snapshot) => {
-            if (snapshot.val() === myName) {
-                document.getElementById('startGameBtn').style.display = 'inline-block';
+            if (!snapshot.exists()) {
+                // إذا فضيت الغرفة تماماً، احذفها من السيرفر
+                roomRef.remove();
+            } else {
+                snapshot.forEach((childSnapshot) => {
+                    const player = childSnapshot.val();
+                    const li = document.createElement('li');
+                    li.innerText = player.name;
+                    if (playersList) playersList.appendChild(li);
+                });
             }
         });
 
-        // مراقبة حالة اللعبة للانتقال لشاشة اللعب
-        database.ref('rooms/' + code + '/status').on('value', (snapshot) => {
+        // إظهار زر البدء للأدمن فقط
+        roomRef.child('admin').once('value', (snapshot) => {
+            if (snapshot.val() === myName) {
+                const startBtn = document.getElementById('startGameBtn');
+                if (startBtn) startBtn.style.display = 'inline-block';
+            }
+        });
+
+        // الانتقال لصفحة اللعبة عند تغيير الحالة
+        roomRef.child('status').on('value', (snapshot) => {
             if (snapshot.val() === "playing") {
-                window.location.href = "game.html"; // الانتقال لصفحة اللعبة
+                window.location.href = "game.html";
             }
         });
     }
@@ -118,8 +138,7 @@ if (window.location.pathname.includes("game.html")) {
     if (!code) {
         window.location.href = "index.html";
     } else {
-        // هون بنقدر نبلش نعرض الأسئلة واللعبة
-        console.log("Welcome to the game!");
-        document.getElementById("question-text").innerText = "لو كنت بهار، أي نوع رح تكون وليه؟";
+        console.log("الآن أنت في اللعبة! 🌶️");
+        // هون بنقدر نبرمج منطق الأسئلة لاحقاً
     }
 }
