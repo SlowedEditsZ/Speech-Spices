@@ -163,7 +163,7 @@ if (window.location.pathname.includes("game.html")) {
     roomRef.child('currentQuestionId').on('value', (snapshot) => {
         const qId = snapshot.val();
         if (qId) {
-            const question = questionBank.find(q => q.id === qId);
+            const question = questions.find(q => q.id === qId);
             document.getElementById("question-text").innerText = question.text;
         }
     });
@@ -183,8 +183,8 @@ if (window.location.pathname.includes("game.html")) {
 
 // دالة اختيار سؤال عشوائي (للأدمن فقط)
 function pickRandomQuestion(code) {
-    const randomIndex = Math.floor(Math.random() * questionBank.length);
-    const selectedQuestion = questionBank[randomIndex];
+    const randomIndex = Math.floor(Math.random() * questions.length);
+    const selectedQuestion = questions[randomIndex];
     
     database.ref('rooms/' + code).update({
         currentQuestionId: selectedQuestion.id
