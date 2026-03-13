@@ -133,16 +133,8 @@ if (window.location.pathname.includes("lobby.html")) {
     }
 }
 
-function startGame() {
-    const code = localStorage.getItem("roomCode");
-    if (code) {
-        database.ref('rooms/' + code).update({
-            status: "playing"
-        });
-    }
-}
-
-const questions = [
+// 1. مصفوفة الأسئلة (تأكد إنها موجودة في app.js عشان كل الدوال تقدر تشوفها)
+const questionBank = [
     { id: 1, text: "لو معك رحلة مجانية لشخصين، مين بتأخذ معك من الموجودين وليه؟", category: "خفيف" },
     { id: 2, text: "شو أكثر طبخة بتذكرك بلمة العيلة؟", category: "عائلة" },
     { id: 3, text: "لو صرت رئيس وزراء ليوم واحد، شو أول قرار بتأخذه؟", category: "ضحك" },
@@ -152,41 +144,53 @@ const questions = [
     { id: 7, text: "لو انقطع النت عن العالم كله، شو أول إشي بتعمله؟", category: "خفيف" }
 ];
 
-// --- دوال صفحة اللعبة ---
-if (window.location.pathname.includes("game.html")) {
+// 2. تعديل دالة البدء عشان تبعت أول سؤال مباشرة
+function startGame() {
     const code = localStorage.getItem("roomCode");
-    const myName = localStorage.getItem("playerName");
-
-    const roomRef = database.ref('rooms/' + code);
-
-    // 1. مراقبة السؤال الحالي في Firebase
-    roomRef.child('currentQuestionId').on('value', (snapshot) => {
-        const qId = snapshot.val();
-        if (qId) {
-            const question = questions.find(q => q.id === qId);
-            document.getElementById("question-text").innerText = question.text;
-        }
-    });
-
-    // 2. إظهار زر "سؤال جديد" فقط للأدمن
-    roomRef.child('admin').once('value', (snapshot) => {
-        if (snapshot.val() === myName) {
-            // بنضيف زر للأدمن ديناميكياً أو بنظهره إذا كان موجود
-            const nextBtn = document.createElement('button');
-            nextBtn.innerText = "السؤال التالي ➡️";
-            nextBtn.className = "btn-create"; 
-            nextBtn.onclick = () => pickRandomQuestion(code);
-            document.getElementById("game-area").appendChild(nextBtn);
-        }
+    
+    // اختيار سؤال عشوائي من المصفوفة
+    const randomQuestion = questionBank[Math.floor(Math.random() * questionBank.length)];
+    
+    database.ref('rooms/' + code).update({
+        status: "playing",
+        currentQuestionId: randomQuestion.id // 🌟 السطر السحري: إرسال الـ ID تبع السؤال الأول
     });
 }
 
-// دالة اختيار سؤال عشوائي (للأدمن فقط)
-function pickRandomQuestion(code) {
-    const randomIndex = Math.floor(Math.random() * questions.length);
-    const selectedQuestion = questions[randomIndex];
-    
-    database.ref('rooms/' + code).update({
-        currentQuestionId: selectedQuestion.id
+// --- 3. دوال صفحة اللعبة (game.html) المحدثة ---
+if (window.location.pathname.includes("game.html")) {
+    const code = localStorage.getItem("roomCode");
+    const myName = localStorage.getItem("playerName");
+    const roomRef = database.ref('rooms/' + code);
+
+    // مراقبة السؤال الحالي وعرضه للكل
+    roomRef.child('currentQuestionId').on('value', (snapshot) => {
+        const qId = snapshot.val();
+        
+        if (qId) {
+            const question = questionBank.find(q => q.id === qId);
+            if (question) {
+                // تحديث الشاشة بالسؤال والفئة
+                document.getElementById("question-text").innerText = question.text;
+                document.getElementById("question-category").innerText = "الفئة: " + question.category;
+            }
+        }
+    });
+
+    // إظهار زر "سؤال جديد" للأدمن فقط
+    roomRef.child('admin').once('value', (snapshot) => {
+        if (snapshot.val() === myName) {
+            const nextBtn = document.createElement('button');
+            nextBtn.innerText = "سؤال جديد 🌶️";
+            nextBtn.className = "btn-create"; 
+            
+            // لما الأدمن يكبس، بيختار سؤال جديد وبحدثه بـ Firebase
+            nextBtn.onclick = () => {
+                const newRandomQ = questionBank[Math.floor(Math.random() * questionBank.length)];
+                roomRef.update({ currentQuestionId: newRandomQ.id });
+            };
+            
+            document.getElementById("game-area").appendChild(nextBtn);
+        }
     });
 }
